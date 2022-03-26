@@ -6,6 +6,7 @@ from PIL import Image
 from torchvision import transforms
 import h5py
 import json
+import torch
 import numpy as np
 from advertorch.attacks import LinfPGDAttack, L2PGDAttack,L1PGDAttack
 from base import CustomResNet
