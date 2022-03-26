@@ -54,7 +54,7 @@ class RegMapper(nn.Module):
     def extract_features(self):
       counter=0
       for minibatch in batch(self.input_images,64):
-        output=self.truncated_model(minibatch)
+        output=self.features(minibatch)
         if counter==0:
           with h5py.File('st_resnet_natural_layer_activation.hdf5','w')as f:
               dset=f.create_dataset(self.best_layer,data=output.cpu().detach().numpy())
@@ -70,21 +70,21 @@ class RegMapper(nn.Module):
     def attach_pca(self):
         # print("attach pca")
         # truncate the model (only keep layers before the best layer)
-        self.truncated_model=self.truncate()
+        self.features=self.truncate()
         # compute the PCA weight based on the offline features 
         pca_components=self.offline_pca()
-        self.truncated_model.add_module('flatten',torch.nn.Flatten(start_dim=1))
+        self.features.add_module('flatten',torch.nn.Flatten(start_dim=1))
         pca_layer=torch.nn.Linear(in_features=pca_components.shape[0], out_features=pca_components.shape[1], bias=True)
         # initialize PCA layer with offline PCA weights
         pca_layer.data=torch.FloatTensor(pca_components)
-        self.truncated_model.add_module('pca',pca_layer)
+        self.features.add_module('pca',pca_layer)
         # freeze network layers and PCA layer
-        for param in self.truncated_model.parameters():
+        for param in self.features.parameters():
           param.requires_grad = False
     def attach_reg(self):
         print("attach reg")
         # attach linear mapping layer. 
-        self.truncated_model.add_module('reg',torch.nn.Linear(in_features=self.input_images.shape[0], out_features=self.neuron_target.shape[1], bias=True))
+        self.features.add_module('reg',torch.nn.Linear(in_features=self.input_images.shape[0], out_features=self.neuron_target.shape[1], bias=True))
     def read_data(self):
         session_path=self.session.replace('_','/')
         final_path=session_path[:-1]+'_'+session_path[-1:]
@@ -122,7 +122,7 @@ class RegMapper(nn.Module):
 
     def forward(self,input_images):
 
-        X = self.truncated_model(input_images)
+        X = self.features(input_images)
         return X
 
             
