@@ -6,24 +6,12 @@ from PIL import Image
 from torchvision import transforms
 import h5py
 import json
-import torch
 import numpy as np
+import torch
 from advertorch.attacks import LinfPGDAttack, L2PGDAttack,L1PGDAttack
 from base import CustomResNet
 import torch.nn as nn
 
-preprocess = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(256),
-    transforms.ToTensor()
-    ])
-def batch(iterable, n=1):
-    l = len(iterable)
-    for ndx in range(0, l, n):
-      
-        yield iterable[ndx:min(ndx + n, l)]
-dataset = CustomImageDataset('s_stretch_session1',preprocess,'train')
-data_loader = DataLoader(dataset, batch_size=10, shuffle=True)
 preprocess = transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
@@ -32,9 +20,18 @@ preprocess = transforms.Compose([
             mean=[0.485, 0.456, 0.406],
             std=[0.229, 0.224, 0.225])
             ])
+def batch(iterable, n=1):
+    l = len(iterable)
+    for ndx in range(0, l, n):
+      
+        yield iterable[ndx:min(ndx + n, l)]
+dataset = CustomImageDataset('s_stretch_session1',preprocess,'train')
+data_loader = DataLoader(dataset, batch_size=10, shuffle=True)
+
 mapper=RegMapper(arch='st_resnet',session='s_stretch_session1',preprocess=preprocess)
+model=mapper.cuda()
 adversary = L2PGDAttack(
-mapper, loss_fn=nn.MSELoss(reduction="sum"), eps=14.2737,
+model, loss_fn=nn.MSELoss(reduction="sum"), eps=14.2737,
 nb_iter=20, eps_iter=1.784, rand_init=True, clip_min=-2.1179, clip_max=2.6400,
 targeted=False)
 for i, (images, target) in enumerate(data_loader):
@@ -42,9 +39,9 @@ for i, (images, target) in enumerate(data_loader):
     print("target shape")
     print(target.shape)
     # mapper.forward(images.double())
-    adv_untargeted = adversary.perturb(images.double(), target.double())
+    adv_untargeted = adversary.perturb(images.double().cuda(), target.double().cuda())
     # mapper.forward(adv_untargeted.double())
-    diff=adv_untargeted-images
+    diff=adv_untargeted-images.cuda()
     print(diff.shape)
     diff_norm=torch.norm(diff,p=2,dim=(1,2,3))
     print(diff_norm)
