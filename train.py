@@ -81,6 +81,8 @@ parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')
 parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
+parser.add_argument('--session', default='s_stretch_session1', type=str,
+                    help='session')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
                          'N processes per node, which has N GPUs. This is the '
@@ -153,7 +155,7 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.pretrained:
         print("=> using pre-trained model '{}'".format(args.arch))
         # model = models.__dict__[args.arch](pretrained=True)
-        model=RegMapper(arch='st_resnet',session='s_stretch_session1',preprocess=preprocess)
+        model=RegMapper(arch='st_resnet',session=args.session,preprocess=preprocess)
     else:
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
@@ -191,7 +193,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # define loss function (criterion) and optimizer
     # criterion = nn.CrossEntropyLoss().cuda(args.gpu)
-    criterion = nn.MSELoss(reduction="sum").cuda(args.gpu)
+    criterion = nn.MSELoss(reduction="mean").cuda(args.gpu)
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
@@ -235,7 +237,7 @@ def main_worker(gpu, ngpus_per_node, args):
     #     ])),
     #     batch_size=args.batch_size, shuffle=False,
     #     num_workers=args.workers, pin_memory=True)
-    val_dataset = CustomImageDataset('s_stretch_session1',preprocess,'val')
+    val_dataset = CustomImageDataset(args.session,preprocess,'val')
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True,num_workers=args.workers, pin_memory=True)
     if args.evaluate:
         validate(val_loader, model, criterion, args)
@@ -249,7 +251,7 @@ def main_worker(gpu, ngpus_per_node, args):
     #         transforms.ToTensor(),
     #         normalize,
     #     ]))
-    train_dataset = CustomImageDataset('s_stretch_session1',preprocess,'train')
+    train_dataset = CustomImageDataset(args.session,preprocess,'train')
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -278,7 +280,7 @@ def main_worker(gpu, ngpus_per_node, args):
         #     }, is_best,epoch)
             
             
-        adjust_learning_rate(optimizer, epoch, args)
+        # adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)
@@ -316,10 +318,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
     model.train()
 
     end = time.time()
-    adversary = L2PGDAttack(
-            model, loss_fn=nn.MSELoss(reduction="sum"), eps=14.2737,
-            nb_iter=20, eps_iter=1.784, rand_init=True, clip_min=-2.1179, clip_max=2.6400,
-            targeted=False)
+    # adversary = L2PGDAttack(
+    #         model, loss_fn=nn.MSELoss(reduction="mean"), eps=14.2737,
+    #         nb_iter=20, eps_iter=1.784, rand_init=True, clip_min=-2.1179, clip_max=2.6400,
+    #         targeted=False)
     print("TRAINING")
     natural_neuro_corr=[]
     for i, (images, target) in enumerate(train_loader):
@@ -330,9 +332,9 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
             images = images.cuda(args.gpu, non_blocking=True)
         if torch.cuda.is_available():
             target = target.cuda(args.gpu, non_blocking=True)
-        adv_untargeted = adversary.perturb(images.double().cuda(), target.double().cuda())
+        # adv_untargeted = adversary.perturb(images.double().cuda(), target.double().cuda())
         # compute output
-        output = model(adv_untargeted.double())
+        output = model(images.double())
         loss = criterion(output, target)
 
         # measure accuracy and record loss
@@ -466,7 +468,6 @@ def accuracy(output, target, topk=(1,)):
     with torch.no_grad():
         res=[]
         synth_corr_array=np.array([pearsonr(output.cpu()[:, i], target.cpu()[:, i])[0] for i in range(output.shape[-1])])
-        total_synth_corr=synth_corr_array
         res.append (np.median(synth_corr_array))
         return res
 
