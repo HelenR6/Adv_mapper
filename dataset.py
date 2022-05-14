@@ -18,8 +18,12 @@ class CustomImageDataset(Dataset):
           image_data=f['images/synthetic/monkey_'+final_path][:]
         x = np.array([np.array(self.transform((Image.fromarray(i)).convert('RGB'))) for i in image_data])
         self.images=torch.tensor(x)
-        n1 = f.get('neural/naturalistic/monkey_'+final_path)[:]
-        self.target=np.mean(n1, axis=0)
+        if mode=='train':
+          n1 = f.get('neural/naturalistic/monkey_'+final_path)[:]
+          self.target=np.mean(n1, axis=0)
+        if mode=='val':
+          n1 = f.get('neural/synthetic/monkey_'+final_path)[:]
+          self.target=np.mean(n1, axis=0)
         
     def __len__(self):
         return self.images.shape[0]
