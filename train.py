@@ -30,6 +30,8 @@ import torch
 from advertorch.attacks import LinfPGDAttack, L2PGDAttack,L1PGDAttack
 from base import CustomResNet
 from scipy.stats.stats import pearsonr
+from torch.utils.tensorboard import SummaryWriter
+
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -91,6 +93,17 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
 
 best_acc1 = 0
 
+class AddGaussianNoise(object):
+    def __init__(self, mean=0., std=1.):
+        self.std = std
+        self.mean = mean
+        
+    def __call__(self, tensor):
+        return tensor + torch.randn(tensor.size()) * self.std + self.mean
+    
+    def __repr__(self):
+        return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
+
 
 def main():
     args = parser.parse_args()
@@ -143,14 +156,36 @@ def main_worker(gpu, ngpus_per_node, args):
             args.rank = args.rank * ngpus_per_node + gpu
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
-    preprocess = transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
+    # preprocess = transforms.Compose([
+    #         transforms.Resize(230),
+    #         transforms.CenterCrop(224),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(
+    #         mean=[0.485, 0.456, 0.406],
+    #         std=[0.229, 0.224, 0.225]),
+    #         AddGaussianNoise(0., 1.)
+    #         ],
+    #         )
+    train_preprocess = transforms.Compose([
+            transforms.Resize(230),
+            transforms.RandomCrop(224),
             transforms.ToTensor(),
             transforms.Normalize(
             mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225])
-            ])
+            std=[0.229, 0.224, 0.225]),
+            AddGaussianNoise(0., 0.2)
+            ],
+            )
+    val_preprocess = transforms.Compose([
+            transforms.Resize(230),
+            transforms.RandomCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]),
+            # AddGaussianNoise(0., 0.2)
+            ],
+            )
     # create model
     if args.pretrained:
         print("=> using pre-trained model '{}'".format(args.arch))
@@ -237,7 +272,7 @@ def main_worker(gpu, ngpus_per_node, args):
     #     ])),
     #     batch_size=args.batch_size, shuffle=False,
     #     num_workers=args.workers, pin_memory=True)
-    val_dataset = CustomImageDataset(args.session,preprocess,'val')
+    val_dataset = CustomImageDataset(args.session,val_preprocess,'val')
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True,num_workers=args.workers, pin_memory=True)
     if args.evaluate:
         validate(val_loader, model, criterion, args)
@@ -251,7 +286,7 @@ def main_worker(gpu, ngpus_per_node, args):
     #         transforms.ToTensor(),
     #         normalize,
     #     ]))
-    train_dataset = CustomImageDataset(args.session,preprocess,'train')
+    train_dataset = CustomImageDataset(args.session,train_preprocess,'train')
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -263,7 +298,7 @@ def main_worker(gpu, ngpus_per_node, args):
     #     num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
 
-
+    writer = SummaryWriter()
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
@@ -280,13 +315,14 @@ def main_worker(gpu, ngpus_per_node, args):
         #     }, is_best,epoch)
             
             
-        # adjust_learning_rate(optimizer, epoch, args)
+        adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, args)
+        train(train_loader, model, criterion, optimizer, epoch, args,writer)
 
         # evaluate on validation set
         acc1 = validate(val_loader, model, criterion, args)
+        writer.add_scalar("acc/val",acc1,epoch)
 
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
@@ -303,7 +339,7 @@ def main_worker(gpu, ngpus_per_node, args):
             }, is_best,epoch+1)
 
 
-def train(train_loader, model, criterion, optimizer, epoch, args):
+def train(train_loader, model, criterion, optimizer, epoch, args,writer):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -335,10 +371,13 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         # adv_untargeted = adversary.perturb(images.double().cuda(), target.double().cuda())
         # compute output
         output = model(images.double())
+        if i==0:
+          print(images)
         loss = criterion(output, target)
-
+        writer.add_scalar("Loss/train", loss, epoch)
         # measure accuracy and record loss
         acc1 = accuracy(output, target, topk=(1, 5))
+        writer.add_scalar("acc/train", acc1[0], epoch)
         losses.update(loss.item(), images.size(0))
         natural_neuro_corr.append(acc1[0])
         top1.update(acc1[0], images.size(0))
