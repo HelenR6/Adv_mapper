@@ -85,7 +85,7 @@ parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
 parser.add_argument('--session', default='s_stretch_session1', type=str,
                     help='session')
-parser.add_argument('--comment', default='s_stretch_session1', type=str,
+parser.add_argument('--file_name', default='s_stretch_session1', type=str,
                     help='session')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
@@ -300,7 +300,7 @@ def main_worker(gpu, ngpus_per_node, args):
     #     num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
 
-    writer = SummaryWriter(log_dir="/content/gdrive/MyDrive/runs",comment=args.comment)
+    writer = SummaryWriter(log_dir=f"/content/gdrive/MyDrive/runs/{args.file_name}")
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
