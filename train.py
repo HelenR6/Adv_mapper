@@ -60,7 +60,7 @@ parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
-parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
+parser.add_argument('--wd', '--weight-decay', default=1e-3, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
                     dest='weight_decay')
 parser.add_argument('-p', '--print-freq', default=10, type=int,
@@ -84,6 +84,8 @@ parser.add_argument('--seed', default=None, type=int,
 parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
 parser.add_argument('--session', default='s_stretch_session1', type=str,
+                    help='session')
+parser.add_argument('--comment', default='s_stretch_session1', type=str,
                     help='session')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
@@ -156,36 +158,36 @@ def main_worker(gpu, ngpus_per_node, args):
             args.rank = args.rank * ngpus_per_node + gpu
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
-    # preprocess = transforms.Compose([
+    preprocess = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]),
+            # AddGaussianNoise(0., 1.)
+            ],
+            )
+    # train_preprocess = transforms.Compose([
     #         transforms.Resize(230),
-    #         transforms.CenterCrop(224),
+    #         transforms.RandomCrop(224),
     #         transforms.ToTensor(),
     #         transforms.Normalize(
     #         mean=[0.485, 0.456, 0.406],
     #         std=[0.229, 0.224, 0.225]),
-    #         AddGaussianNoise(0., 1.)
+    #         AddGaussianNoise(0., 0.2)
     #         ],
     #         )
-    train_preprocess = transforms.Compose([
-            transforms.Resize(230),
-            transforms.RandomCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]),
-            AddGaussianNoise(0., 0.2)
-            ],
-            )
-    val_preprocess = transforms.Compose([
-            transforms.Resize(230),
-            transforms.RandomCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]),
-            # AddGaussianNoise(0., 0.2)
-            ],
-            )
+    # val_preprocess = transforms.Compose([
+    #         transforms.Resize(230),
+    #         transforms.RandomCrop(224),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(
+    #         mean=[0.485, 0.456, 0.406],
+    #         std=[0.229, 0.224, 0.225]),
+    #         # AddGaussianNoise(0., 0.2)
+    #         ],
+    #         )
     # create model
     if args.pretrained:
         print("=> using pre-trained model '{}'".format(args.arch))
@@ -272,7 +274,7 @@ def main_worker(gpu, ngpus_per_node, args):
     #     ])),
     #     batch_size=args.batch_size, shuffle=False,
     #     num_workers=args.workers, pin_memory=True)
-    val_dataset = CustomImageDataset(args.session,val_preprocess,'val')
+    val_dataset = CustomImageDataset(args.session,preprocess,'val')
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True,num_workers=args.workers, pin_memory=True)
     if args.evaluate:
         validate(val_loader, model, criterion, args)
@@ -286,7 +288,7 @@ def main_worker(gpu, ngpus_per_node, args):
     #         transforms.ToTensor(),
     #         normalize,
     #     ]))
-    train_dataset = CustomImageDataset(args.session,train_preprocess,'train')
+    train_dataset = CustomImageDataset(args.session,preprocess,'train')
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -298,7 +300,7 @@ def main_worker(gpu, ngpus_per_node, args):
     #     num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
 
-    writer = SummaryWriter()
+    writer = SummaryWriter(log_dir="/content/gdrive/MyDrive/runs",comment=args.comment)
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
@@ -315,7 +317,7 @@ def main_worker(gpu, ngpus_per_node, args):
         #     }, is_best,epoch)
             
             
-        adjust_learning_rate(optimizer, epoch, args)
+        # adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args,writer)
@@ -371,8 +373,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args,writer):
         # adv_untargeted = adversary.perturb(images.double().cuda(), target.double().cuda())
         # compute output
         output = model(images.double())
-        if i==0:
-          print(images)
+        # if i==0:
+        #   print(images)
         loss = criterion(output, target)
         writer.add_scalar("Loss/train", loss, epoch)
         # measure accuracy and record loss
