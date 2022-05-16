@@ -22,19 +22,19 @@ class CustomImageDataset(Dataset):
                 train_ids=train_ids
                 test_ids=test_ids
         if mode=='train':
-          image_data = f['images/naturalistic'][train_ids,:]
+          image_data = f['images/naturalistic'][train_ids]
         if mode=='val_id':
-          image_data = f['images/naturalistic'][test_ids,:]
+          image_data = f['images/naturalistic'][test_ids]
         if mode=='val_ood':
           image_data=f['images/synthetic/monkey_'+final_path][:]
         x = np.array([np.array(self.transform((Image.fromarray(i)).convert('RGB'))) for i in image_data])
         self.images=torch.tensor(x)
         if mode=='train':
           n1 = f.get('neural/naturalistic/monkey_'+final_path)[:]
-          self.target=np.mean(n1, axis=0)[train_ids,:]
+          self.target=np.mean(n1, axis=0)[train_ids]
         if mode=='val_id':
           n1 = f.get('neural/naturalistic/monkey_'+final_path)
-          self.target=np.mean(n1, axis=0)[test_ids,:]
+          self.target=np.mean(n1, axis=0)[test_ids]
         if mode=='val_ood':
           n1 = f.get('neural/synthetic/monkey_'+final_path)[:]
           self.target=np.mean(n1, axis=0)
