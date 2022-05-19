@@ -168,26 +168,26 @@ def main_worker(gpu, ngpus_per_node, args):
             # AddGaussianNoise(0., 1.)
             ],
             )
-    # train_preprocess = transforms.Compose([
-    #         transforms.Resize(230),
-    #         transforms.RandomCrop(224),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(
-    #         mean=[0.485, 0.456, 0.406],
-    #         std=[0.229, 0.224, 0.225]),
-    #         AddGaussianNoise(0., 0.2)
-    #         ],
-    #         )
-    # val_preprocess = transforms.Compose([
-    #         transforms.Resize(230),
-    #         transforms.RandomCrop(224),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(
-    #         mean=[0.485, 0.456, 0.406],
-    #         std=[0.229, 0.224, 0.225]),
-    #         # AddGaussianNoise(0., 0.2)
-    #         ],
-    #         )
+    train_preprocess = transforms.Compose([
+            transforms.Resize(230),
+            transforms.RandomCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]),
+#             AddGaussianNoise(0., 0.2)
+            ],
+            )
+    val_preprocess = transforms.Compose([
+            transforms.Resize(230),
+            transforms.RandomCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]),
+            # AddGaussianNoise(0., 0.2)
+            ],
+            )
     # create model
     if args.pretrained:
         print("=> using pre-trained model '{}'".format(args.arch))
@@ -274,9 +274,9 @@ def main_worker(gpu, ngpus_per_node, args):
     #     ])),
     #     batch_size=args.batch_size, shuffle=False,
     #     num_workers=args.workers, pin_memory=True)
-    ood_val_dataset = CustomImageDataset(args.session,preprocess,'val_ood')
+    ood_val_dataset = CustomImageDataset(args.session,val_preprocess,'val_ood')
     ood_val_loader = DataLoader(ood_val_dataset, batch_size=args.batch_size, shuffle=True,num_workers=args.workers, pin_memory=True)
-    id_val_dataset = CustomImageDataset(args.session,preprocess,'val_id')
+    id_val_dataset = CustomImageDataset(args.session,val_preprocess,'val_id')
     id_val_loader = DataLoader(id_val_dataset, batch_size=args.batch_size, shuffle=True,num_workers=args.workers, pin_memory=True)
     if args.evaluate:
         validate(ood_val_loader, model, criterion, args)
@@ -290,7 +290,7 @@ def main_worker(gpu, ngpus_per_node, args):
     #         transforms.ToTensor(),
     #         normalize,
     #     ]))
-    train_dataset = CustomImageDataset(args.session,preprocess,'train')
+    train_dataset = CustomImageDataset(args.session,train_preprocess,'train')
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
