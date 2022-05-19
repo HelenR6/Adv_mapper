@@ -33,7 +33,7 @@ class CustomImageDataset(Dataset):
           n1 = f.get('neural/naturalistic/monkey_'+final_path)[:]
           self.target=np.mean(n1, axis=0)[train_ids]
         if mode=='val_id':
-          n1 = f.get('neural/naturalistic/monkey_'+final_path)
+          n1 = f.get('neural/naturalistic/monkey_'+final_path)[:]
           self.target=np.mean(n1, axis=0)[test_ids]
         if mode=='val_ood':
           n1 = f.get('neural/synthetic/monkey_'+final_path)[:]
