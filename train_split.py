@@ -17,7 +17,7 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
-from dataset import CustomImageDataset
+from dataset_split import CustomImageDataset
 from base import CustomResNet
 from mapper import RegMapper
 from torch.utils.data import DataLoader
