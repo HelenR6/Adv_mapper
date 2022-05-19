@@ -169,8 +169,8 @@ def main_worker(gpu, ngpus_per_node, args):
             ],
             )
     train_preprocess = transforms.Compose([
-            transforms.Resize(230),
-            transforms.RandomCrop(224),
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
             transforms.ToTensor(),
             transforms.Normalize(
             mean=[0.485, 0.456, 0.406],
@@ -179,8 +179,8 @@ def main_worker(gpu, ngpus_per_node, args):
             ],
             )
     val_preprocess = transforms.Compose([
-            transforms.Resize(230),
-            transforms.RandomCrop(224),
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
             transforms.ToTensor(),
             transforms.Normalize(
             mean=[0.485, 0.456, 0.406],
