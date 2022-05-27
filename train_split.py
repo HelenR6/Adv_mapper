@@ -31,7 +31,7 @@ from advertorch.attacks import LinfPGDAttack, L2PGDAttack,L1PGDAttack
 from base import CustomResNet
 from scipy.stats.stats import pearsonr
 from torch.utils.tensorboard import SummaryWriter
-
+import os
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -41,7 +41,7 @@ parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('data', metavar='DIR',
                     help='path to dataset')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
-                    choices=model_names,
+                    # choices=model_names,
                     help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet18)')
@@ -81,11 +81,19 @@ parser.add_argument('--dist-backend', default='nccl', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=42, type=int,
                     help='seed for initializing training. ')
+parser.add_argument('--index', default=None, type=int,
+                    help='seed for initializing training. ')
+parser.add_argument('--adjusted', default=False, type=bool,
+                    help='adjusted or not. ')
+parser.add_argument('--shuffle', default=False, type=bool,
+                    help='dataloader shuffle or not. ')
 parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
 parser.add_argument('--session', default='s_stretch_session1', type=str,
                     help='session')
 parser.add_argument('--file_name', default='s_stretch_session1', type=str,
+                    help='session')
+parser.add_argument('--input_path', default='/content/gdrive/MyDrive', type=str,
                     help='session')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
@@ -168,31 +176,31 @@ def main_worker(gpu, ngpus_per_node, args):
             # AddGaussianNoise(0., 1.)
             ],
             )
-    train_preprocess = transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]),
-#             AddGaussianNoise(0., 0.2)
-            ],
-            )
-    val_preprocess = transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]),
-            # AddGaussianNoise(0., 0.2)
-            ],
-            )
+    # train_preprocess = transforms.Compose([
+    #         transforms.Resize(230),
+    #         transforms.RandomCrop(224),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(
+    #         mean=[0.485, 0.456, 0.406],
+    #         std=[0.229, 0.224, 0.225]),
+    #         AddGaussianNoise(0., 0.2)
+    #         ],
+    #         )
+    # val_preprocess = transforms.Compose([
+    #         transforms.Resize(230),
+    #         transforms.RandomCrop(224),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(
+    #         mean=[0.485, 0.456, 0.406],
+    #         std=[0.229, 0.224, 0.225]),
+    #         # AddGaussianNoise(0., 0.2)
+    #         ],
+    #         )
     # create model
     if args.pretrained:
         print("=> using pre-trained model '{}'".format(args.arch))
         # model = models.__dict__[args.arch](pretrained=True)
-        model=RegMapper(arch='st_resnet',session=args.session,preprocess=preprocess)
+        model=RegMapper(arch=args.arch,session=args.session,preprocess=preprocess,input_path=args.input_path)
     else:
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
@@ -274,10 +282,10 @@ def main_worker(gpu, ngpus_per_node, args):
     #     ])),
     #     batch_size=args.batch_size, shuffle=False,
     #     num_workers=args.workers, pin_memory=True)
-    ood_val_dataset = CustomImageDataset(args.session,val_preprocess,'val_ood')
-    ood_val_loader = DataLoader(ood_val_dataset, batch_size=args.batch_size, shuffle=True,num_workers=args.workers, pin_memory=True)
-    id_val_dataset = CustomImageDataset(args.session,val_preprocess,'val_id')
-    id_val_loader = DataLoader(id_val_dataset, batch_size=args.batch_size, shuffle=True,num_workers=args.workers, pin_memory=True)
+    ood_val_dataset = CustomImageDataset(args.session,preprocess,'val_ood',args.input_path,args.index)
+    ood_val_loader = DataLoader(ood_val_dataset, batch_size=args.batch_size, shuffle=args.shuffle,num_workers=args.workers, pin_memory=True)
+    id_val_dataset = CustomImageDataset(args.session,preprocess,'val_id',args.input_path,args.index)
+    id_val_loader = DataLoader(id_val_dataset, batch_size=args.batch_size, shuffle=args.shuffle,num_workers=args.workers, pin_memory=True)
     if args.evaluate:
         validate(ood_val_loader, model, criterion, args)
         return
@@ -290,19 +298,25 @@ def main_worker(gpu, ngpus_per_node, args):
     #         transforms.ToTensor(),
     #         normalize,
     #     ]))
-    train_dataset = CustomImageDataset(args.session,train_preprocess,'train')
+    train_dataset = CustomImageDataset(args.session,preprocess,'train',args.input_path,args.index)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     else:
         train_sampler = None
-    train_loader=DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+    train_loader=DataLoader(train_dataset, batch_size=args.batch_size, shuffle=args.shuffle, num_workers=args.workers, pin_memory=True, sampler=train_sampler)
     # train_loader = torch.utils.data.DataLoader(
     #     train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
     #     num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+    if args.adjusted:
 
-
-    writer = SummaryWriter(log_dir=f"/content/gdrive/MyDrive/runs/{args.file_name}")
+        file_name=f"correct_adjusted_50_{args.arch}_wd={args.weight_decay}_bs={args.batch_size}_epoch={args.epochs}_lr={args.lr}"
+    else:
+        # if args.shuffle:
+        file_name=f"correct_standard_{args.arch}_wd={args.weight_decay}_bs={args.batch_size}_epoch={args.epochs}_lr={args.lr}"
+        # else:
+        #     file_name=f"correct_false_standard_{args.arch}_wd={args.weight_decay}_bs={args.batch_size}_epoch={args.epochs}_lr={args.lr}"
+    writer = SummaryWriter(log_dir=f"{args.input_path}/runs/{args.session}/{file_name}")
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
@@ -318,21 +332,50 @@ def main_worker(gpu, ngpus_per_node, args):
         #         'optimizer' : optimizer.state_dict(),
         #     }, is_best,epoch)
             
-            
-        # adjust_learning_rate(optimizer, epoch, args)
+        if args.adjusted:  
+            adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args,writer)
 
         # evaluate on validation set
-        acc1 = validate(ood_val_loader, model, criterion, args)
+        acc1, ood_np = validate(ood_val_loader, model, criterion, args)
         writer.add_scalar("acc/val_ood",acc1,epoch)
-        acc1_id = validate(id_val_loader, model, criterion, args)
+        acc1_id, id_np = validate(id_val_loader, model, criterion, args)
         writer.add_scalar("acc/val_id",acc1_id,epoch)
 
         # remember best acc@1 and save checkpoint
-        is_best = acc1 > best_acc1
-        best_acc1 = max(acc1, best_acc1)
+        is_best = acc1_id > best_acc1
+        best_acc1 = max(acc1_id, best_acc1)
+        if epoch==99:
+            # synth_corr=get_neuro_wise(ood_val_loader, model, criterion, args)
+            # natural_corr=get_neuro_wise(id_val_loader, model, criterion, args)
+            ood_indices,ood_shape=ood_val_dataset.get_param()
+            id_indices,id_shape=id_val_dataset.get_param()
+            if os.path.isfile(f'/home/helenr6/V4_mapping/{args.session}/temp_{args.arch}_{args.seed}_synth_prediction.npy'):
+                _array=np.load(f'/home/helenr6/V4_mapping/{args.session}/temp_{args.arch}_{args.seed}_synth_prediction.npy',allow_pickle=True)
+                _array[args.index]=ood_np.cpu().data.numpy()
+                np.save(f'/home/helenr6/V4_mapping/{args.session}/temp_{args.arch}_{args.seed}_synth_prediction.npy',_array)
+            else:
+                _array=np.empty((5,ood_shape[0],ood_shape[1]), dtype=object)
+                _array[args.index]=ood_np.cpu().data.numpy()
+                np.save(f'/home/helenr6/V4_mapping/{args.session}/temp_{args.arch}_{args.seed}_synth_prediction.npy',_array)
+
+            if os.path.isfile(f'/home/helenr6/V4_mapping/{args.session}/{args.arch}_{args.seed}_natural_prediction.npy'):
+                _array=np.load(f'/home/helenr6/V4_mapping/{args.session}/{args.arch}_{args.seed}_natural_prediction.npy',allow_pickle=True)
+                _array[id_indices]=id_np.cpu().data.numpy()
+                np.save(f'/home/helenr6/V4_mapping/{args.session}/{args.arch}_{args.seed}_natural_prediction.npy',_array)
+            else:
+                # TODO: 640 should be consistent with number of id images
+                _array=np.empty((640,id_shape[1]), dtype=object)
+                _array[id_indices]=id_np.cpu().data.numpy()
+                np.save(f'/home/helenr6/V4_mapping/{args.session}/{args.arch}_{args.seed}_natural_prediction.npy',_array)
+
+
+            # synth_corr=get_neuro_wise(ood_val_loader, model, criterion, args)
+            # natural_corr=get_neuro_wise(id_val_loader, model, criterion, args)
+            # np.save(f'/home/helenr6/V4_mapping/{args.session}/{args.seed}_synth_neuron_corr.npy',total_synth_corr)
+            # np.save(f'/home/helenr6/V4_mapping/{args.session}/{args.seed}_synth_neuron_corr.npy',total_synth_corr)
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
@@ -342,7 +385,13 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'best_acc1': best_acc1,
                 'optimizer' : optimizer.state_dict(),
-            }, is_best,epoch+1)
+            }, is_best,epoch+1,args.input_path)
+    if args.index==4:
+        _array=np.load(f'/home/helenr6/V4_mapping/{args.session}/temp_{args.arch}_{args.seed}_synth_prediction.npy',allow_pickle=True)
+        sum_array=np.sum(_array,axis=0)
+        sum_array=sum_array/5
+        np.save(f'/home/helenr6/V4_mapping/{args.session}/{args.arch}_{args.seed}_synth_prediction.npy',sum_array)
+
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args,writer):
@@ -414,7 +463,7 @@ def validate(val_loader, model, criterion, args):
 
     # switch to evaluate mode
     model.eval()
-
+    output=[]
     with torch.no_grad():
 
         end = time.time()
@@ -445,15 +494,66 @@ def validate(val_loader, model, criterion, args):
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
               .format(top1=top1, top5=top5))
 
-    return top1.avg
+    return top1.avg,output
 
 
-def save_checkpoint(state, is_best,epoch_num, filename='checkpoint.pth.tar'):
+def get_neuro_wise(val_loader, model, criterion, args):
+    # batch_time = AverageMeter('Time', ':6.3f')
+    # losses = AverageMeter('Loss', ':.4e')
+    # top1 = AverageMeter('Acc@1', ':6.2f')
+    # top5 = AverageMeter('Acc@5', ':6.2f')
+    # progress = ProgressMeter(
+    #     len(val_loader),
+    #     [batch_time, losses, top1, top5],
+    #     prefix='Test: ')
+
+    # switch to evaluate mode
+    model.eval()
+
+    with torch.no_grad():
+
+        # end = time.time()
+        for i, (images, target) in enumerate(val_loader):
+            if args.gpu is not None:
+                images = images.cuda(args.gpu, non_blocking=True)
+            if torch.cuda.is_available():
+                target = target.cuda(args.gpu, non_blocking=True)
+                
+            # compute output
+            output = model(images.double().cuda())
+            loss = criterion(output, target)
+
+            # measure accuracy and record loss
+            acc1 = neuro_wise_func(output, target)
+            # losses.update(loss.item(), images.size(0))
+            # top1.update(acc1[0], images.size(0))
+            # top5.update(0, images.size(0))
+
+            # # measure elapsed time
+            # batch_time.update(time.time() - end)
+            # end = time.time()
+
+            # if i % args.print_freq == 0:
+            #     progress.display(i)
+
+        # # TODO: this should also be done with the ProgressMeter
+        # print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
+        #       .format(top1=top1, top5=top5))
+
+    return acc1
+
+def save_checkpoint(state, is_best,epoch_num, input_path,filename='checkpoint.pth.tar'):
     torch.save(state, filename)
     if is_best :
-        shutil.copyfile(filename, '/content/model_best.pth.tar')
+        if "gdrive" in input_path:
+            shutil.copyfile(filename, '/content/model_best.pth.tar')
+        else:
+            shutil.copyfile(filename, '/home/helenr6/mappers/model_best.pth.tar')
     if epoch_num%10==0 or epoch_num==1:
-        shutil.copyfile(filename, f'/content/model_epoch{epoch_num}.pth.tar')
+        if "gdrive" in input_path:
+            shutil.copyfile(filename, f'/content/model_epoch{epoch_num}.pth.tar')
+        else:
+            shutil.copyfile(filename, f'/home/helenr6/mappers/model_epoch{epoch_num}.pth.tar')
     # if is_best :
     #     shutil.copyfile(filename, '/home/helenr6/projects/def-bashivan/helenr6/rn101_checkpoints/model_best.pth.tar')
     # if epoch_num%10==0 or epoch_num==1:
@@ -502,8 +602,8 @@ class ProgressMeter(object):
 
 
 def adjust_learning_rate(optimizer, epoch, args):
-    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    lr = args.lr * (0.1 ** (epoch // 30))
+    """Sets the learning rate to the initial LR decayed by 10 every 60 epochs"""
+    lr = args.lr * (0.1 ** (epoch // 50))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
@@ -528,7 +628,9 @@ def accuracy(output, target, topk=(1,)):
         #     correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
         #     res.append(correct_k.mul_(100.0 / batch_size))
         # return res
-
+def neuro_wise_func(output, target):
+    synth_corr_array=np.array([pearsonr(output.cpu()[:, i], target.cpu()[:, i])[0] for i in range(output.shape[-1])])
+    return synth_corr_array
 
 if __name__ == '__main__':
     main()
