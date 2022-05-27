@@ -76,7 +76,8 @@ class RegMapper(nn.Module):
         self.features.add_module('flatten',torch.nn.Flatten(start_dim=1))
         pca_layer=torch.nn.Linear(in_features=pca_components.shape[0], out_features=pca_components.shape[1], bias=True)
         # initialize PCA layer with offline PCA weights
-        pca_layer.data=torch.FloatTensor(pca_components)
+        pca_layer.weight=torch.nn.Parameter(torch.FloatTensor(pca_components.transpose()))
+#         pca_layer.data=torch.FloatTensor(pca_components)
         self.features.add_module('pca',pca_layer)
         # freeze network layers and PCA layer
         for param in self.features.parameters():
