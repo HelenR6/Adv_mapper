@@ -9,6 +9,7 @@ import torch.nn as nn
 import json
 import torchvision.models as models
 from sklearn.decomposition import PCA
+from load_model import load_model
 
 def batch(iterable, n=1):
     l = len(iterable)
@@ -16,20 +17,25 @@ def batch(iterable, n=1):
       
         yield iterable[ndx:min(ndx + n, l)]
 class RegMapper(nn.Module):
-    def __init__(self, arch=None, best_layer=None,input_images=None,neuron_target=None,session=None,preprocess=None):
+    def __init__(self, arch=None, best_layer=None,input_images=None,neuron_target=None,session=None,preprocess=None,input_path=None):
         super(RegMapper, self).__init__()
         self.arch=arch
-        with open(f'/content/gdrive/MyDrive/V4/{session}/st_resnet_natural_mean.json') as json_file:
+        with open(f'{input_path}/V4/{session}/{arch}_natural_mean.json') as json_file:
           load_data = json.load(json_file)
           json_acceptable_string = load_data.replace("'", "\"")
           d = json.loads(json_acceptable_string)
           # get the layer with the highest ID neural prediction. 
           self.best_layer=max(d, key=d.get)
-        self.layer_list=layerlist=['maxpool','layer1[0]','layer1[1]','layer1[2]','layer2[0]','layer2[1]','layer2[2]','layer2[3]','layer3[0]','layer3[1]','layer3[2]','layer3[3]','layer3[4]','layer3[5]','layer4[0]','layer4[1]','layer4[2]','avgpool','fc']
+        if "101" in arch:
+
+          self.layer_list=['maxpool','layer1[0]','layer1[1]','layer1[2]','layer2[0]','layer2[1]','layer2[2]','layer2[3]','layer3[0]','layer3[1]','layer3[2]','layer3[3]','layer3[4]','layer3[5]','layer4[0]','layer4[1]','layer4[2]','avgpool','fc']
+        else:
+          self.layer_list=['maxpool','layer1[0]','layer1[1]','layer1[2]','layer2[0]','layer2[1]','layer2[2]','layer2[3]','layer3[0]','layer3[1]','layer3[2]','layer3[3]','layer3[4]','layer3[5]','layer3[6]', 'layer3[7]', 'layer3[8]', 'layer3[9]', 'layer3[10]', 'layer3[11]', 'layer3[12]', 'layer3[13]', 'layer3[14]', 'layer3[15]', 'layer3[16]', 'layer3[17]', 'layer3[18]', 'layer3[19]', 'layer3[20]', 'layer3[21]', 'layer3[22]','layer4[0]','layer4[1]','layer4[2]','avgpool','fc']
         self.input_images=input_images
         self.neuron_target=neuron_target
         self.session=session
         self.preprocess=preprocess
+        self.input_path=input_path
         
         self.read_data()
         self.attach_pca()
@@ -41,9 +47,9 @@ class RegMapper(nn.Module):
             activation[name] = output.detach()
         return hook
     def load_model(self):
-        if self.arch=="st_resnet":
-            # load checkpoint for st resnet
-            resnet=models.resnet50(pretrained=True)
+        # if self.arch=="st_resnet":
+        #     # load checkpoint for st resnet
+        resnet,_=load_model(self.arch) 
 
 
         return resnet
@@ -56,10 +62,10 @@ class RegMapper(nn.Module):
       for minibatch in batch(self.input_images,64):
         output=self.features(minibatch)
         if counter==0:
-          with h5py.File('st_resnet_natural_layer_activation.hdf5','w')as f:
+          with h5py.File(f'{self.session}_{self.arch}_natural_layer_activation.hdf5','w')as f:
               dset=f.create_dataset(self.best_layer,data=output.cpu().detach().numpy())
         else:
-          with h5py.File('st_resnet_natural_layer_activation.hdf5','r+')as f:
+          with h5py.File(f'{self.session}_{self.arch}_natural_layer_activation.hdf5','r+')as f:
               data = f[self.best_layer]
               a=data[...]
               print(a.shape)
@@ -74,10 +80,10 @@ class RegMapper(nn.Module):
         # compute the PCA weight based on the offline features 
         pca_components=self.offline_pca()
         self.features.add_module('flatten',torch.nn.Flatten(start_dim=1))
-        pca_layer=torch.nn.Linear(in_features=pca_components.shape[0], out_features=pca_components.shape[1], bias=True)
+        pca_layer=torch.nn.Linear(in_features=pca_components.shape[0], out_features=pca_components.shape[1], bias=False)
         # initialize PCA layer with offline PCA weights
+        # pca_layer.data=torch.FloatTensor(pca_components)
         pca_layer.weight=torch.nn.Parameter(torch.FloatTensor(pca_components.transpose()))
-#         pca_layer.data=torch.FloatTensor(pca_components)
         self.features.add_module('pca',pca_layer)
         # freeze network layers and PCA layer
         for param in self.features.parameters():
@@ -85,12 +91,12 @@ class RegMapper(nn.Module):
     def attach_reg(self):
         print("attach reg")
         # attach linear mapping layer. 
-        self.features.add_module('reg',torch.nn.Linear(in_features=self.input_images.shape[0], out_features=self.neuron_target.shape[1], bias=True))
+        self.features.add_module('reg',torch.nn.Linear(in_features=self.input_images.shape[0], out_features=self.neuron_target.shape[1], bias=False))
     def read_data(self):
         session_path=self.session.replace('_','/')
         final_path=session_path[:-1]+'_'+session_path[-1:]
         print(final_path)
-        f = h5py.File('/content/gdrive/MyDrive/npc_v4_data.h5','r')
+        f = h5py.File(f'{self.input_path}/npc_v4_data.h5','r')
         natural_data = f['images/naturalistic'][:]
         
         x = np.array([np.array(self.preprocess((Image.fromarray(i)).convert('RGB'))) for i in natural_data])
@@ -103,10 +109,10 @@ class RegMapper(nn.Module):
     
         return None
     def offline_pca(self):
-        if not path.exists('st_resnet_natural_layer_activation.hdf5'):
+        if not path.exists(f'{self.session}_{self.arch}_natural_layer_activation.hdf5'):
           # extract features from the best layer. 
           self.extract_features()
-        with h5py.File(f'st_resnet_natural_layer_activation.hdf5','r')as f:
+        with h5py.File(f'{self.session}_{self.arch}_natural_layer_activation.hdf5','r')as f:
           a=f[self.best_layer][...]
  
         
